@@ -781,46 +781,49 @@ function aumentarContraste(imageData) {
     return imageData;
 }
 
+let debugEl = null;
+let frameCount = 0;
+
 function tick() {
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    // Debug: mostrar info na tela
+    if (!debugEl) {
+        debugEl = document.createElement('div');
+        debugEl.style.cssText = 'position:fixed;bottom:80px;left:10px;right:10px;background:rgba(0,0,0,0.8);color:#0f0;font-family:monospace;font-size:11px;padding:8px;border-radius:8px;z-index:9999;max-height:100px;overflow:auto;';
+        document.body.appendChild(debugEl);
+    }
+
+    frameCount++;
 
     if (video.readyState === video.HAVE_ENOUGH_DATA && scanAtivo) {
         canvas.height = video.videoHeight;
         canvas.width = video.videoWidth;
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        // Calcular área de scan (região central correspondente ao retângulo rosa)
-        const scanWidth = canvas.width * 0.85;
-        const scanHeight = canvas.height * 0.5;
-        const scanX = (canvas.width - scanWidth) / 2;
-        const scanY = (canvas.height - scanHeight) / 2;
-
-        // Tentar primeiro na área central
-        let regionData = ctx.getImageData(scanX, scanY, scanWidth, scanHeight);
-        let code = jsQR(regionData.data, regionData.width, regionData.height, {
-            inversionAttempts: 'attemptBoth'
-        });
-
-        // Se não encontrou, tentar com contraste aumentado
-        if (!code) {
-            regionData = ctx.getImageData(scanX, scanY, scanWidth, scanHeight);
-            aumentarContraste(regionData);
-            code = jsQR(regionData.data, regionData.width, regionData.height, {
-                inversionAttempts: 'attemptBoth'
-            });
+        // Debug info
+        if (frameCount % 30 === 0) {
+            debugEl.innerHTML = `Frame: ${frameCount}<br>Video: ${video.videoWidth}x${video.videoHeight}<br>Canvas: ${canvas.width}x${canvas.height}<br>jsQR: ${typeof jsQR}`;
         }
 
-        // Se ainda não encontrou, tentar na imagem completa
-        if (!code) {
-            const fullData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            code = jsQR(fullData.data, fullData.width, fullData.height, {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Scan na imagem completa (simplificado para debug)
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+        let code = null;
+        try {
+            code = jsQR(imageData.data, imageData.width, imageData.height, {
                 inversionAttempts: 'attemptBoth'
             });
+        } catch(e) {
+            debugEl.innerHTML += `<br><span style="color:red">Erro jsQR: ${e.message}</span>`;
         }
 
         if (code) {
+            debugEl.innerHTML += `<br><span style="color:yellow">QR DETECTADO: ${code.data.substring(0,30)}...</span>`;
+
             const agora = Date.now();
             if (code.data === ultimoQR && (agora - ultimoTempo) < 2000) {
                 requestAnimationFrame(tick);
@@ -833,6 +836,8 @@ function tick() {
             processar(code.data);
             return;
         }
+    } else if (frameCount % 30 === 0) {
+        debugEl.innerHTML = `Frame: ${frameCount}<br>Video readyState: ${video.readyState}<br>scanAtivo: ${scanAtivo}<br>jsQR: ${typeof jsQR}`;
     }
 
     if (scanAtivo) {
