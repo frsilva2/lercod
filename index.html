@@ -914,7 +914,7 @@ function decodificar(qr) {
         };
     }
     else if (tam === 45 && qr.startsWith('01')) {
-        const cod = qr.substring(12, 18);
+        const cod = qr.substring(11, 18);
         const cor = qr.substring(27, 30).replace(/^0+/, '');
         const qtd = parseFloat(qr.substring(37, 42));
         const prod = buscarProd(cod);
