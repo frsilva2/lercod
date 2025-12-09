@@ -937,11 +937,26 @@ function decodificar(qr) {
 }
 
 function buscarProd(cod) {
+    // 1. Busca exata
     if (prodIndex[cod]) return prodIndex[cod];
+
+    // 2. Remove zeros à esquerda e tenta novamente
+    const semZeros = cod.replace(/^0+/, '');
+    if (prodIndex[semZeros]) return prodIndex[semZeros];
+
+    // 3. Busca por base significativa (primeiros 4 dígitos após remover zeros)
+    const baseSemZeros = semZeros.substring(0, 4);
+    for (let c in prodIndex) {
+        const cSemZeros = c.replace(/^0+/, '');
+        if (cSemZeros.substring(0, 4) === baseSemZeros) return prodIndex[c];
+    }
+
+    // 4. Busca por base original (para compatibilidade)
     const base = cod.substring(0, 4);
     for (let c in prodIndex) {
         if (c.substring(0, 4) === base) return prodIndex[c];
     }
+
     return null;
 }
 
