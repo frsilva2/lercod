@@ -944,17 +944,12 @@ function buscarProd(cod) {
     const semZeros = cod.replace(/^0+/, '');
     if (prodIndex[semZeros]) return prodIndex[semZeros];
 
-    // 3. Busca por base significativa (primeiros 4 dígitos após remover zeros)
-    const baseSemZeros = semZeros.substring(0, 4);
+    // 3. Ignora os 2 últimos dígitos e remove zeros à esquerda
+    // Ex: 04170030 → 041700 → 41700 deve encontrar 4170000 → 41700
+    const base = cod.slice(0, -2).replace(/^0+/, '');
     for (let c in prodIndex) {
-        const cSemZeros = c.replace(/^0+/, '');
-        if (cSemZeros.substring(0, 4) === baseSemZeros) return prodIndex[c];
-    }
-
-    // 4. Busca por base original (para compatibilidade)
-    const base = cod.substring(0, 4);
-    for (let c in prodIndex) {
-        if (c.substring(0, 4) === base) return prodIndex[c];
+        const cBase = c.slice(0, -2).replace(/^0+/, '');
+        if (base === cBase) return prodIndex[c];
     }
 
     return null;
