@@ -769,34 +769,72 @@ function pararCamera() {
     }
 }
 
+// Função para aumentar contraste da imagem (ajuda com QR codes em etiquetas)
+function aumentarContraste(imageData) {
+    const data = imageData.data;
+    const factor = 1.5; // fator de contraste
+    for (let i = 0; i < data.length; i += 4) {
+        data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));     // R
+        data[i+1] = Math.min(255, Math.max(0, factor * (data[i+1] - 128) + 128)); // G
+        data[i+2] = Math.min(255, Math.max(0, factor * (data[i+2] - 128) + 128)); // B
+    }
+    return imageData;
+}
+
 function tick() {
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    
+
     if (video.readyState === video.HAVE_ENOUGH_DATA && scanAtivo) {
         canvas.height = video.videoHeight;
         canvas.width = video.videoWidth;
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        const code = jsQR(imageData.data, imageData.width, imageData.height);
-        
+
+        // Calcular área de scan (região central correspondente ao retângulo rosa)
+        const scanWidth = canvas.width * 0.85;
+        const scanHeight = canvas.height * 0.5;
+        const scanX = (canvas.width - scanWidth) / 2;
+        const scanY = (canvas.height - scanHeight) / 2;
+
+        // Tentar primeiro na área central
+        let regionData = ctx.getImageData(scanX, scanY, scanWidth, scanHeight);
+        let code = jsQR(regionData.data, regionData.width, regionData.height, {
+            inversionAttempts: 'attemptBoth'
+        });
+
+        // Se não encontrou, tentar com contraste aumentado
+        if (!code) {
+            regionData = ctx.getImageData(scanX, scanY, scanWidth, scanHeight);
+            aumentarContraste(regionData);
+            code = jsQR(regionData.data, regionData.width, regionData.height, {
+                inversionAttempts: 'attemptBoth'
+            });
+        }
+
+        // Se ainda não encontrou, tentar na imagem completa
+        if (!code) {
+            const fullData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            code = jsQR(fullData.data, fullData.width, fullData.height, {
+                inversionAttempts: 'attemptBoth'
+            });
+        }
+
         if (code) {
             const agora = Date.now();
             if (code.data === ultimoQR && (agora - ultimoTempo) < 2000) {
                 requestAnimationFrame(tick);
                 return;
             }
-            
+
             ultimoQR = code.data;
             ultimoTempo = agora;
-            
+
             processar(code.data);
             return;
         }
     }
-    
+
     if (scanAtivo) {
         requestAnimationFrame(tick);
     }
