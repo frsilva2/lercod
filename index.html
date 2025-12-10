@@ -659,21 +659,30 @@
 let PRODUTOS_DB = [];
 const prodIndex = {};
 
+// Usuários do sistema
+const users = {
+    'admin': { senha: '123456', nome: 'Admin' },
+    'felipe': { senha: 'emporio2025', nome: 'Felipe' },
+    'operador1': { senha: 'op123', nome: 'Operador 1' },
+    'operador2': { senha: 'op123', nome: 'Operador 2' },
+};
+
 // Carregar dados do JSON
 async function carregarProdutos() {
     try {
         const response = await fetch('depra.json');
         PRODUTOS_DB = await response.json();
         
-        // Criar índice por codigo_produto
-        PRODUTOS_DB.forEach(p => { 
-            prodIndex[p.codigo_produto] = {
-                produto: p.codigo_produto,
+        // Criar índice por codigo_produto (convertendo para string)
+        PRODUTOS_DB.forEach(p => {
+            const cod = String(p.codigo_produto);
+            prodIndex[cod] = {
+                produto: cod,
                 descricao: p.produto,
                 cod_prod_erp: p.cod_erp,
                 nome_prod_erp: p.nome_erp,
                 fornecedor_grupo: p.fornecedor
-            }; 
+            };
         });
         
         console.log('✓ ' + PRODUTOS_DB.length + ' produtos carregados do JSON');
@@ -965,13 +974,16 @@ function buscarProd(cod) {
     const semZeros = cod.replace(/^0+/, '');
     if (prodIndex[semZeros]) return prodIndex[semZeros];
 
-    // 3. Ignora os 2 últimos dígitos (variações irrelevantes dos fornecedores)
-    // Ex: 20020049 → 200200 → buscar 20020000 (sem zeros = 200200)
-    // Ex: 334103 → 3341 → buscar 334100 ou 334103 (sem zeros = 3341)
-    const base = cod.slice(0, -2).replace(/^0+/, '');
-    for (let c in prodIndex) {
-        const cBase = c.slice(0, -2).replace(/^0+/, '');
-        if (base === cBase) return prodIndex[c];
+    // 3. Ignora últimos dígitos progressivamente (2, 3, 4)
+    // Ex: 03260226 → 32602 → 3260 → encontra 3260000
+    for (let corte = 2; corte <= 4; corte++) {
+        if (cod.length <= corte) continue;
+        const base = cod.slice(0, -corte).replace(/^0+/, '');
+        for (let c in prodIndex) {
+            if (c.length <= corte) continue;
+            const cBase = c.slice(0, -corte).replace(/^0+/, '');
+            if (base === cBase) return prodIndex[c];
+        }
     }
 
     return null;
