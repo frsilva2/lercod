@@ -571,6 +571,54 @@
         <div class="scan-hint">
             Aponte o QR code aqui
         </div>
+
+        <!-- PAINEL DE TESTE -->
+        <div id="painelTeste" style="position:fixed;top:140px;left:10px;right:10px;background:rgba(0,0,0,0.9);padding:15px;border-radius:10px;z-index:150;font-family:monospace;font-size:12px;max-height:40vh;overflow-y:auto;">
+            <div style="color:#0f0;margin-bottom:10px;font-weight:bold;">🧪 PAINEL DE TESTE</div>
+
+            <!-- Entrada manual -->
+            <div style="margin-bottom:10px;">
+                <input type="text" id="codigoManual" placeholder="Digite ou cole código aqui..."
+                       style="width:100%;padding:10px;border-radius:5px;border:none;font-family:monospace;font-size:14px;"
+                       onkeypress="if(event.key==='Enter') testarCodigo()">
+            </div>
+            <button onclick="testarCodigo()" style="width:100%;padding:10px;background:#10b981;color:white;border:none;border-radius:5px;font-weight:bold;margin-bottom:10px;">
+                ▶ TESTAR CÓDIGO
+            </button>
+
+            <!-- Códigos de exemplo -->
+            <div style="color:#888;margin:10px 0 5px;">Exemplos (clique para testar):</div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;">
+                <button onclick="testarExemplo('litoral1')" style="flex:1;min-width:45%;padding:8px;background:#f59e0b;color:white;border:none;border-radius:5px;font-size:11px;">
+                    LITORAL<br>SATIN INDONESIA
+                </button>
+                <button onclick="testarExemplo('litoral2')" style="flex:1;min-width:45%;padding:8px;background:#f59e0b;color:white;border:none;border-radius:5px;font-size:11px;">
+                    LITORAL<br>HELANCA
+                </button>
+                <button onclick="testarExemplo('euro1')" style="flex:1;min-width:45%;padding:8px;background:#3b82f6;color:white;border:none;border-radius:5px;font-size:11px;">
+                    EURO<br>CREPE AMANDA
+                </button>
+                <button onclick="testarExemplo('euro2')" style="flex:1;min-width:45%;padding:8px;background:#3b82f6;color:white;border:none;border-radius:5px;font-size:11px;">
+                    EURO<br>TWO WAY
+                </button>
+            </div>
+
+            <!-- Log de teste -->
+            <div style="color:#888;margin:10px 0 5px;">Log:</div>
+            <div id="logTeste" style="background:#111;padding:10px;border-radius:5px;color:#0f0;max-height:150px;overflow-y:auto;white-space:pre-wrap;font-size:11px;">
+Aguardando teste...
+            </div>
+
+            <!-- Botão fechar -->
+            <button onclick="togglePainelTeste()" style="width:100%;padding:8px;background:#666;color:white;border:none;border-radius:5px;margin-top:10px;font-size:11px;">
+                ✖ FECHAR PAINEL
+            </button>
+        </div>
+
+        <!-- Botão para abrir painel de teste -->
+        <button id="btnAbrirTeste" onclick="togglePainelTeste()" style="position:fixed;bottom:20px;right:20px;width:50px;height:50px;border-radius:50%;background:#f59e0b;color:white;border:none;font-size:20px;z-index:100;box-shadow:0 4px 15px rgba(0,0,0,0.3);">
+            🧪
+        </button>
     </div>
     
     <!-- MODAL PRODUTO -->
@@ -1319,6 +1367,128 @@ function novaSessao() {
         localStorage.removeItem('inv_backup');
         location.reload();
     }
+}
+
+// ============================================================================
+// FUNÇÕES DE TESTE
+// ============================================================================
+
+// Códigos de exemplo para teste
+// LITORAL: 33 dígitos - código pos 5-12, qtd pos 14-18
+// EURO: 45 dígitos começa com 01 - código pos 11-17, cor pos 27-29, qtd pos 37-41
+const CODIGOS_EXEMPLO = {
+    litoral1: {
+        // Pos: 00000|03260226|0|00074|00025117100856
+        //      0-4  |5-12    |13|14-18|19-32
+        codigo: '000000326022600007400025117100856',
+        descricao: 'LITORAL - SATIN INDONESIA (cod: 03260226, qtd: 74 MT)'
+    },
+    litoral2: {
+        // Pos: 00000|04170000|0|00123|00099887766554
+        codigo: '000004170000000012300099887766554',
+        descricao: 'LITORAL - HELANCA LIGHT (cod: 04170000, qtd: 123 MT)'
+    },
+    euro1: {
+        // Pos: 01|000000|000|5142100|000000000|012|0|00001|0|00050|000
+        //      0-1|2-7  |8-10|11-17 |18-26    |27-29|30|31-35|36|37-41|42-44
+        codigo: '010000000005142100000000000012000010005000000',
+        descricao: 'EURO - CREPE AMANDA (cod: 5142100, cor: 012, qtd: 50 MT)'
+    },
+    euro2: {
+        // Pos: 01|000000|000|6691030|000000000|025|0|00001|0|00100|000
+        codigo: '010000000006691030000000000025000010010000000',
+        descricao: 'EURO - TWO WAY SPAN (cod: 6691030, cor: 025, qtd: 100 MT)'
+    }
+};
+
+function togglePainelTeste() {
+    const painel = document.getElementById('painelTeste');
+    const btn = document.getElementById('btnAbrirTeste');
+    if (painel.style.display === 'none') {
+        painel.style.display = 'block';
+        btn.style.display = 'none';
+    } else {
+        painel.style.display = 'none';
+        btn.style.display = 'block';
+    }
+}
+
+function logTeste(msg, tipo = 'info') {
+    const log = document.getElementById('logTeste');
+    const cores = { info: '#0f0', erro: '#f00', aviso: '#ff0', sucesso: '#0ff' };
+    const timestamp = new Date().toLocaleTimeString('pt-BR');
+    log.innerHTML += `\n<span style="color:${cores[tipo] || '#0f0'}">[${timestamp}] ${msg}</span>`;
+    log.scrollTop = log.scrollHeight;
+}
+
+function testarCodigo() {
+    const input = document.getElementById('codigoManual');
+    const codigo = input.value.trim();
+
+    if (!codigo) {
+        logTeste('⚠️ Digite um código para testar', 'aviso');
+        return;
+    }
+
+    logTeste(`\n========== NOVO TESTE ==========`, 'info');
+    logTeste(`Código: ${codigo}`, 'info');
+    logTeste(`Tamanho: ${codigo.length} dígitos`, 'info');
+
+    // Analisar estrutura
+    if (codigo.length === 33) {
+        logTeste(`Formato: LITORAL (33 dígitos)`, 'info');
+        logTeste(`  Código produto (5-12): ${codigo.substring(5, 13)}`, 'info');
+        logTeste(`  Quantidade (14-18): ${codigo.substring(14, 19)}`, 'info');
+        logTeste(`  Controle (19-32): ${codigo.substring(19, 33)}`, 'info');
+    } else if (codigo.length === 45 && codigo.startsWith('01')) {
+        logTeste(`Formato: EUROTEXTIL GS1 (45 dígitos)`, 'info');
+        logTeste(`  PO (2-7): ${codigo.substring(2, 8)}`, 'info');
+        logTeste(`  Código produto (11-17): ${codigo.substring(11, 18)}`, 'info');
+        logTeste(`  Cor (27-29): ${codigo.substring(27, 30)}`, 'info');
+        logTeste(`  Seq (31-35): ${codigo.substring(31, 36)}`, 'info');
+        logTeste(`  Quantidade (37-41): ${codigo.substring(37, 42)}`, 'info');
+    } else {
+        logTeste(`Formato: DESCONHECIDO`, 'aviso');
+    }
+
+    // Testar decodificação
+    logTeste(`\nTestando decodificar()...`, 'info');
+    const resultado = decodificar(codigo);
+
+    if (resultado.erro) {
+        logTeste(`❌ ERRO: ${resultado.erro}`, 'erro');
+    } else {
+        logTeste(`✅ SUCESSO!`, 'sucesso');
+        logTeste(`  Fornecedor: ${resultado.fornecedor}`, 'sucesso');
+        logTeste(`  Código: ${resultado.codigo}`, 'sucesso');
+        logTeste(`  Descrição: ${resultado.descricao || 'N/A'}`, 'sucesso');
+        logTeste(`  Quantidade: ${resultado.quantidade_mt} MT`, 'sucesso');
+        logTeste(`  Cor: ${resultado.cor || 'Manual'}`, 'sucesso');
+        logTeste(`  Requer cor: ${resultado.requer_cor ? 'SIM' : 'NÃO'}`, 'sucesso');
+
+        // Perguntar se quer processar
+        if (confirm(`Código válido!\n\n${resultado.descricao}\n\nDeseja processar e registrar?`)) {
+            pararCamera();
+            processar(codigo);
+        }
+    }
+
+    logTeste(`================================\n`, 'info');
+}
+
+function testarExemplo(tipo) {
+    const exemplo = CODIGOS_EXEMPLO[tipo];
+    if (exemplo) {
+        document.getElementById('codigoManual').value = exemplo.codigo;
+        logTeste(`\n📋 Exemplo carregado: ${exemplo.descricao}`, 'aviso');
+        testarCodigo();
+    }
+}
+
+// Mostrar painel de teste por padrão em modo teste
+if (MODO_TESTE) {
+    // O painel já está visível por padrão
+    document.getElementById('btnAbrirTeste').style.display = 'none';
 }
     </script>
 </body>
