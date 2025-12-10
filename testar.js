@@ -66,24 +66,28 @@ function buscarProd(cod) {
         return { ...prodIndex[semZeros], metodo: 'sem_zeros' };
     }
 
-    // 3. Remove zeros à direita também (normaliza)
+    // 3. Ignora últimos 2, 3 ou 4 dígitos progressivamente
+    for (let corte = 2; corte <= 4; corte++) {
+        if (semZeros.length <= corte) continue;
+        const base = semZeros.slice(0, -corte);
+
+        for (let c in prodIndex) {
+            const cSemZeros = c.replace(/^0+/, '');
+            if (cSemZeros.length <= corte) continue;
+            const cBase = cSemZeros.slice(0, -corte);
+
+            if (base === cBase) {
+                return { ...prodIndex[c], metodo: `corte_${corte}`, baseUsada: base };
+            }
+        }
+    }
+
+    // 4. Normaliza removendo zeros à direita (para códigos com tamanhos diferentes)
     const normalizado = semZeros.replace(/0+$/, '');
     for (let c in prodIndex) {
         const cNorm = c.replace(/^0+/, '').replace(/0+$/, '');
         if (normalizado === cNorm) {
             return { ...prodIndex[c], metodo: 'normalizado', baseUsada: normalizado };
-        }
-    }
-
-    // 4. Compara primeiros N dígitos (3 a 6)
-    for (let tam = 6; tam >= 3; tam--) {
-        if (semZeros.length < tam) continue;
-        const prefixo = semZeros.substring(0, tam);
-        for (let c in prodIndex) {
-            const cSemZeros = c.replace(/^0+/, '');
-            if (cSemZeros.length >= tam && cSemZeros.substring(0, tam) === prefixo) {
-                return { ...prodIndex[c], metodo: `prefixo_${tam}`, baseUsada: prefixo };
-            }
         }
     }
 
