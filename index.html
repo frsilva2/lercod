@@ -653,26 +653,70 @@
         </div>
     </div>
 
+    <!-- Bibliotecas de leitura -->
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@aspect/zbar-wasm@0.10.1/dist/index.js"></script>
     <script>
+/*
+================================================================================
+ESTRUTURA DOS CÓDIGOS DE BARRAS
+================================================================================
+
+LITORAL (33 dígitos) - Código de barras 1D ou QR
+--------------------------------------------------------------------------------
+Posição  | Tamanho | Conteúdo
+---------|---------|------------------------------------------
+0-4      | 5       | Prefixo (zeros)
+5-12     | 8       | Código do produto
+13       | 1       | Separador
+14-18    | 5       | Quantidade (metros, sem decimal)
+19-32    | 14      | Controle interno
+--------------------------------------------------------------------------------
+Exemplo: 000000326022600007400025117100856
+         |   ||      ||    ||            |
+         0   5|      13    19            32
+             12      |18
+                     14
+Extração: código=03260226, qtd=00074 (74 metros)
+COR: Inserida MANUALMENTE pelo operador
+
+EUROTEXTIL (45 dígitos, começa com "01") - GS1-128
+--------------------------------------------------------------------------------
+Posição  | Tamanho | Conteúdo
+---------|---------|------------------------------------------
+0-1      | 2       | AI 01 (GTIN)
+2-7      | 6       | PO (Pedido)
+8-10     | 3       | Prefixo
+11-17    | 7       | Código do produto
+18-26    | 9       | Info adicional
+27-29    | 3       | Cor (com zeros à esquerda)
+30       | 1       | Separador
+31-35    | 5       | Sequência
+36       | 1       | Separador
+37-41    | 5       | Quantidade (metros)
+42-44    | 3       | Dígitos verificadores
+--------------------------------------------------------------------------------
+Exemplo: 012345670001234567890123456012000010007400123
+         |       |  |      |        |  |    |    |
+         01      8  11     18       27 31   37   42
+COR: Extraída AUTOMATICAMENTE do código (posição 27-29)
+
+================================================================================
+*/
+
 // Dados serão carregados do JSON externo
 let PRODUTOS_DB = [];
 const prodIndex = {};
 
-// Usuários do sistema
-const users = {
-    'admin': { senha: '123456', nome: 'Admin' },
-    'felipe': { senha: 'emporio2025', nome: 'Felipe' },
-    'operador1': { senha: 'op123', nome: 'Operador 1' },
-    'operador2': { senha: 'op123', nome: 'Operador 2' },
-};
+// MODO TESTE - Sem login
+const MODO_TESTE = true;
 
 // Carregar dados do JSON
 async function carregarProdutos() {
     try {
         const response = await fetch('depra.json');
         PRODUTOS_DB = await response.json();
-        
+
         // Criar índice por codigo_produto (convertendo para string)
         PRODUTOS_DB.forEach(p => {
             const cod = String(p.codigo_produto);
@@ -684,8 +728,9 @@ async function carregarProdutos() {
                 fornecedor_grupo: p.fornecedor
             };
         });
-        
+
         console.log('✓ ' + PRODUTOS_DB.length + ' produtos carregados do JSON');
+        console.log('✓ Índice criado com ' + Object.keys(prodIndex).length + ' códigos únicos');
         return true;
     } catch(e) {
         console.error('Erro ao carregar produtos:', e);
@@ -694,16 +739,24 @@ async function carregarProdutos() {
     }
 }
 
-// Inicializar ao carregar página
-carregarProdutos();
-
-let userLogado = null;
+// Variáveis globais
+let userLogado = { user: 'teste', nome: 'Modo Teste' };
 let prodAtual = null;
 let entradas = [];
 let stream = null;
 let scanAtivo = false;
-let ultimoQR = null;
+let ultimoCodigo = null;
 let ultimoTempo = 0;
+let zbarScanner = null;
+
+// Configurações de leitura
+const CONFIG = {
+    debounceMs: 2000,           // Tempo entre leituras do mesmo código
+    contrasteFator: 1.5,        // Fator de contraste para melhorar leitura
+    brilhoAjuste: 20,           // Ajuste de brilho
+    tentarMultiplosProcessamentos: true,  // Tentar com diferentes processamentos de imagem
+    mostrarDebug: true          // Mostrar informações de debug
+};
 
 function salvarBackup() {
     localStorage.setItem('inv_backup', JSON.stringify({
@@ -718,33 +771,38 @@ function recuperarBackup() {
     if (backup) {
         const data = JSON.parse(backup);
         const minutos = Math.round((new Date() - new Date(data.timestamp)) / 60000);
-        if (minutos < 60 && confirm(`Recuperar sessão de ${data.usuario.nome} (${minutos} min atrás)?`)) {
-            entradas = data.entradas;
-            atualizarContador();
+        if (minutos < 60 && data.entradas && data.entradas.length > 0) {
+            if (confirm(`Recuperar ${data.entradas.length} itens da sessão anterior (${minutos} min atrás)?`)) {
+                entradas = data.entradas;
+                atualizarContador();
+            }
         }
     }
 }
 
-// LOGIN
-function login() {
-    const u = document.getElementById('usuario').value.trim().toLowerCase();
-    const s = document.getElementById('senha').value;
-    
-    if (users[u] && users[u].senha === s) {
-        userLogado = { user: u, nome: users[u].nome };
-        document.getElementById('telaLogin').classList.add('hidden');
-        document.getElementById('telaInstrucoes').classList.remove('hidden');
-        document.getElementById('nomeUserInst').textContent = userLogado.nome;
-        document.getElementById('nomeUser').textContent = userLogado.nome;
-        
-        recuperarBackup();
-    } else {
-        document.getElementById('erroLogin').classList.remove('hidden');
-    }
-}
+// Auto-iniciar em modo teste
+window.onload = async function() {
+    await carregarProdutos();
 
-document.getElementById('senha').onkeypress = (e) => {
-    if (e.key === 'Enter') login();
+    // Inicializar ZBar para códigos de barras 1D
+    try {
+        if (typeof ZBar !== 'undefined') {
+            zbarScanner = await ZBar.createScanner();
+            console.log('✓ ZBar scanner inicializado (suporte a código de barras 1D)');
+        }
+    } catch(e) {
+        console.warn('ZBar não disponível, usando apenas jsQR:', e);
+    }
+
+    if (MODO_TESTE) {
+        // Pular login, ir direto para leitura
+        document.getElementById('telaLogin').classList.add('hidden');
+        document.getElementById('telaInstrucoes').classList.add('hidden');
+        document.getElementById('telaMain').classList.remove('hidden');
+        document.getElementById('nomeUser').textContent = '🧪 MODO TESTE';
+        recuperarBackup();
+        iniciarCamera();
+    }
 };
 
 function voltarLogin() {
@@ -791,30 +849,140 @@ function pararCamera() {
     }
 }
 
-// Função para aumentar contraste da imagem (ajuda com QR codes em etiquetas)
-function aumentarContraste(imageData) {
-    const data = imageData.data;
-    const factor = 1.5; // fator de contraste
+// ============================================================================
+// PROCESSAMENTO DE IMAGEM PARA MELHORAR LEITURA
+// ============================================================================
+
+// Aumentar contraste (ajuda com iluminação fraca)
+function processarContraste(imageData, fator = 1.5) {
+    const data = new Uint8ClampedArray(imageData.data);
     for (let i = 0; i < data.length; i += 4) {
-        data[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));     // R
-        data[i+1] = Math.min(255, Math.max(0, factor * (data[i+1] - 128) + 128)); // G
-        data[i+2] = Math.min(255, Math.max(0, factor * (data[i+2] - 128) + 128)); // B
+        data[i] = Math.min(255, Math.max(0, fator * (data[i] - 128) + 128));
+        data[i+1] = Math.min(255, Math.max(0, fator * (data[i+1] - 128) + 128));
+        data[i+2] = Math.min(255, Math.max(0, fator * (data[i+2] - 128) + 128));
     }
-    return imageData;
+    return new ImageData(data, imageData.width, imageData.height);
 }
+
+// Ajustar brilho (ajuda com fotos escuras)
+function processarBrilho(imageData, ajuste = 30) {
+    const data = new Uint8ClampedArray(imageData.data);
+    for (let i = 0; i < data.length; i += 4) {
+        data[i] = Math.min(255, Math.max(0, data[i] + ajuste));
+        data[i+1] = Math.min(255, Math.max(0, data[i+1] + ajuste));
+        data[i+2] = Math.min(255, Math.max(0, data[i+2] + ajuste));
+    }
+    return new ImageData(data, imageData.width, imageData.height);
+}
+
+// Converter para escala de cinza (melhora leitura de códigos de barras 1D)
+function processarCinza(imageData) {
+    const data = new Uint8ClampedArray(imageData.data);
+    for (let i = 0; i < data.length; i += 4) {
+        const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+        data[i] = data[i+1] = data[i+2] = gray;
+    }
+    return new ImageData(data, imageData.width, imageData.height);
+}
+
+// Binarização com threshold adaptativo (ótimo para códigos de barras)
+function processarBinarizar(imageData, threshold = 128) {
+    const data = new Uint8ClampedArray(imageData.data);
+    for (let i = 0; i < data.length; i += 4) {
+        const gray = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+        const valor = gray > threshold ? 255 : 0;
+        data[i] = data[i+1] = data[i+2] = valor;
+    }
+    return new ImageData(data, imageData.width, imageData.height);
+}
+
+// Sharpen (nitidez - ajuda com foco ruim)
+function processarNitidez(ctx, imageData) {
+    // Implementação simplificada - aplica filtro de nitidez
+    const kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+    return aplicarKernel(imageData, kernel);
+}
+
+function aplicarKernel(imageData, kernel) {
+    const side = Math.round(Math.sqrt(kernel.length));
+    const halfSide = Math.floor(side / 2);
+    const src = imageData.data;
+    const w = imageData.width;
+    const h = imageData.height;
+    const output = new Uint8ClampedArray(src.length);
+
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const dstOff = (y * w + x) * 4;
+            let r = 0, g = 0, b = 0;
+            for (let cy = 0; cy < side; cy++) {
+                for (let cx = 0; cx < side; cx++) {
+                    const scy = y + cy - halfSide;
+                    const scx = x + cx - halfSide;
+                    if (scy >= 0 && scy < h && scx >= 0 && scx < w) {
+                        const srcOff = (scy * w + scx) * 4;
+                        const wt = kernel[cy * side + cx];
+                        r += src[srcOff] * wt;
+                        g += src[srcOff + 1] * wt;
+                        b += src[srcOff + 2] * wt;
+                    }
+                }
+            }
+            output[dstOff] = Math.min(255, Math.max(0, r));
+            output[dstOff + 1] = Math.min(255, Math.max(0, g));
+            output[dstOff + 2] = Math.min(255, Math.max(0, b));
+            output[dstOff + 3] = 255;
+        }
+    }
+    return new ImageData(output, w, h);
+}
+
+// ============================================================================
+// LEITORES DE CÓDIGO
+// ============================================================================
 
 let debugEl = null;
 let frameCount = 0;
+let ultimaLeitura = '';
+
+// Tentar ler com jsQR (QR codes)
+function tentarJsQR(imageData) {
+    try {
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: 'attemptBoth'
+        });
+        if (code && code.data) {
+            return { tipo: 'QR', dados: code.data };
+        }
+    } catch(e) {
+        console.warn('jsQR erro:', e);
+    }
+    return null;
+}
+
+// Tentar ler com ZBar (códigos de barras 1D e QR)
+async function tentarZBar(imageData) {
+    if (!zbarScanner) return null;
+    try {
+        const symbols = await zbarScanner.scan(imageData);
+        if (symbols && symbols.length > 0) {
+            return { tipo: symbols[0].typeName, dados: symbols[0].decode() };
+        }
+    } catch(e) {
+        console.warn('ZBar erro:', e);
+    }
+    return null;
+}
 
 function tick() {
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-    // Debug: mostrar info na tela
-    if (!debugEl) {
+    // Debug visual
+    if (CONFIG.mostrarDebug && !debugEl) {
         debugEl = document.createElement('div');
-        debugEl.style.cssText = 'position:fixed;bottom:80px;left:10px;right:10px;background:rgba(0,0,0,0.8);color:#0f0;font-family:monospace;font-size:11px;padding:8px;border-radius:8px;z-index:9999;max-height:100px;overflow:auto;';
+        debugEl.style.cssText = 'position:fixed;bottom:80px;left:10px;right:10px;background:rgba(0,0,0,0.85);color:#0f0;font-family:monospace;font-size:10px;padding:10px;border-radius:8px;z-index:9999;max-height:120px;overflow:auto;line-height:1.4;';
         document.body.appendChild(debugEl);
     }
 
@@ -823,47 +991,80 @@ function tick() {
     if (video.readyState === video.HAVE_ENOUGH_DATA && scanAtivo) {
         canvas.height = video.videoHeight;
         canvas.width = video.videoWidth;
-
-        // Debug info
-        if (frameCount % 30 === 0) {
-            debugEl.innerHTML = `Frame: ${frameCount}<br>Video: ${video.videoWidth}x${video.videoHeight}<br>Canvas: ${canvas.width}x${canvas.height}<br>jsQR: ${typeof jsQR}`;
-        }
-
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        // Scan na imagem completa (simplificado para debug)
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const imageDataOriginal = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-        let code = null;
-        try {
-            code = jsQR(imageData.data, imageData.width, imageData.height, {
-                inversionAttempts: 'attemptBoth'
-            });
-        } catch(e) {
-            debugEl.innerHTML += `<br><span style="color:red">Erro jsQR: ${e.message}</span>`;
+        // Lista de processamentos para tentar (melhora leitura com iluminação variável)
+        const processamentos = [
+            { nome: 'Original', dados: imageDataOriginal },
+            { nome: 'Contraste+', dados: processarContraste(imageDataOriginal, 1.5) },
+            { nome: 'Contraste++', dados: processarContraste(imageDataOriginal, 2.0) },
+            { nome: 'Brilho+', dados: processarBrilho(imageDataOriginal, 40) },
+            { nome: 'Brilho-', dados: processarBrilho(imageDataOriginal, -30) },
+            { nome: 'Cinza+Bin', dados: processarBinarizar(processarCinza(imageDataOriginal), 100) },
+            { nome: 'Cinza+Bin2', dados: processarBinarizar(processarCinza(imageDataOriginal), 150) },
+        ];
+
+        // Debug info
+        if (frameCount % 20 === 0 && debugEl) {
+            debugEl.innerHTML = `
+                <b>📷 Scanner Ativo</b> | Frame: ${frameCount}<br>
+                Video: ${video.videoWidth}x${video.videoHeight}<br>
+                jsQR: ${typeof jsQR !== 'undefined' ? '✅' : '❌'} |
+                ZBar: ${zbarScanner ? '✅' : '❌'}<br>
+                Última: ${ultimaLeitura || 'nenhuma'}
+            `;
         }
 
-        if (code) {
-            debugEl.innerHTML += `<br><span style="color:yellow">QR DETECTADO: ${code.data.substring(0,30)}...</span>`;
+        // Tentar cada processamento
+        (async () => {
+            for (const proc of processamentos) {
+                // Tentar jsQR primeiro (mais rápido para QR codes)
+                let resultado = tentarJsQR(proc.dados);
 
-            const agora = Date.now();
-            if (code.data === ultimoQR && (agora - ultimoTempo) < 2000) {
-                requestAnimationFrame(tick);
-                return;
+                // Se não encontrou, tentar ZBar (melhor para 1D)
+                if (!resultado && zbarScanner) {
+                    resultado = await tentarZBar(proc.dados);
+                }
+
+                if (resultado) {
+                    const agora = Date.now();
+                    if (resultado.dados === ultimoCodigo && (agora - ultimoTempo) < CONFIG.debounceMs) {
+                        continue; // Mesmo código, ignorar
+                    }
+
+                    ultimoCodigo = resultado.dados;
+                    ultimoTempo = agora;
+                    ultimaLeitura = `${resultado.tipo} via ${proc.nome}`;
+
+                    if (debugEl) {
+                        debugEl.innerHTML += `<br><span style="color:#ff0">✓ ${resultado.tipo}: ${resultado.dados.substring(0,25)}...</span>`;
+                    }
+
+                    console.log(`✓ Código detectado (${resultado.tipo} via ${proc.nome}):`, resultado.dados);
+                    processar(resultado.dados);
+                    return;
+                }
             }
 
-            ultimoQR = code.data;
-            ultimoTempo = agora;
+            // Nenhum código encontrado, continuar scanning
+            if (scanAtivo) {
+                requestAnimationFrame(tick);
+            }
+        })();
 
-            processar(code.data);
-            return;
+    } else {
+        if (frameCount % 30 === 0 && debugEl) {
+            debugEl.innerHTML = `
+                <b>⏳ Aguardando câmera...</b><br>
+                readyState: ${video.readyState}<br>
+                scanAtivo: ${scanAtivo}
+            `;
         }
-    } else if (frameCount % 30 === 0) {
-        debugEl.innerHTML = `Frame: ${frameCount}<br>Video readyState: ${video.readyState}<br>scanAtivo: ${scanAtivo}<br>jsQR: ${typeof jsQR}`;
-    }
-
-    if (scanAtivo) {
-        requestAnimationFrame(tick);
+        if (scanAtivo) {
+            requestAnimationFrame(tick);
+        }
     }
 }
 
