@@ -1127,37 +1127,77 @@ function mostrarToast(msg, erro = false) {
 
 function decodificar(qr) {
     const tam = qr.length;
-    
-    if (tam === 33) {
-        const cod = qr.substring(5, 13);
-        const qtd = parseFloat(qr.substring(14, 19));
+
+    // LITORAL: códigos de 33+ dígitos (normalizar para 33)
+    if (tam >= 33 && tam <= 35 && !qr.startsWith('01')) {
+        // Normalizar para 33 dígitos (remover zeros extras do início)
+        let c = qr;
+        while (c.length > 33 && c.startsWith('0')) {
+            c = c.substring(1);
+        }
+        c = c.padStart(33, '0');
+
+        // Produto: posição 5-12 (8 dígitos)
+        const cod = c.substring(5, 13);
+
+        // Quantidade: buscar 5 dígitos entre 3000-11000 (30-110 MT em centésimos)
+        const areaBusca = c.substring(13);
+        let qtd = 0;
+        for (let i = 0; i <= areaBusca.length - 5; i++) {
+            const valor = parseInt(areaBusca.substring(i, i + 5));
+            if (valor >= 3000 && valor <= 11000) {
+                qtd = valor / 100;
+                break;
+            }
+        }
+
         const prod = buscarProd(cod);
-        
+
         if (!prod) return { erro: `❌ Produto ${cod} não encontrado` };
-        
+
         return {
             fornecedor: 'LITORAL',
             codigo: cod,
             quantidade_mt: qtd,
-            controle: qr.substring(19, 33),
+            controle: c.substring(23, 33),
             ...prod,
             requer_cor: true
         };
     }
-    else if (tam === 45 && qr.startsWith('01')) {
-        const cod = qr.substring(11, 18);
-        const cor = qr.substring(27, 30).replace(/^0+/, '');
-        const qtd = parseFloat(qr.substring(37, 42));
+    // EUROTEXTIL: códigos de 43-45 dígitos começando com '01'
+    else if (tam >= 43 && tam <= 45 && qr.startsWith('01')) {
+        // Produto: posição 2-8 (7 dígitos)
+        const cod = qr.substring(2, 9);
+
+        // Quantidade: posição 37-41 (5 dígitos em centésimos)
+        let qtd = parseInt(qr.substring(37, 42)) / 100;
+        if (qtd < 30) {
+            qtd = parseInt(qr.substring(35, 40)) / 100;
+        }
+
+        // Cor: buscar de trás para frente - 3 dígitos (100-999) seguidos de '000' ou '17'
+        let cor = '';
+        for (let i = 35; i >= 20; i--) {
+            const candidato = qr.substring(i, i + 3);
+            const seguinte = qr.substring(i + 3, i + 6);
+            const val = parseInt(candidato);
+
+            if (val >= 100 && val <= 999 && (seguinte === '000' || seguinte.startsWith('17'))) {
+                cor = candidato.replace(/^0+/, '');
+                break;
+            }
+        }
+
         const prod = buscarProd(cod);
-        
+
         if (!prod) return { erro: `❌ Produto ${cod} não encontrado` };
-        
+
         return {
             fornecedor: 'EUROTEXTIL',
             codigo: cod,
             quantidade_mt: qtd,
             cor: `#${cor}`,
-            po: qr.substring(2, 8),
+            po: qr.substring(9, 15),
             seq: qr.substring(31, 36).replace(/^0+/, ''),
             ...prod,
             requer_cor: false
@@ -1168,22 +1208,21 @@ function decodificar(qr) {
 }
 
 function buscarProd(cod) {
+    // Remover zeros à esquerda
+    const semZeros = cod.replace(/^0+/, '') || cod;
+
     // 1. Busca exata
     if (prodIndex[cod]) return prodIndex[cod];
-
-    // 2. Remove zeros à esquerda e tenta novamente
-    const semZeros = cod.replace(/^0+/, '');
     if (prodIndex[semZeros]) return prodIndex[semZeros];
 
-    // 3. Ignora últimos dígitos progressivamente (2, 3, 4)
-    // Ex: 03260226 → 32602 → 3260 → encontra 3260000
-    for (let corte = 2; corte <= 4; corte++) {
-        if (cod.length <= corte) continue;
-        const base = cod.slice(0, -corte).replace(/^0+/, '');
-        for (let c in prodIndex) {
-            if (c.length <= corte) continue;
-            const cBase = c.slice(0, -corte).replace(/^0+/, '');
-            if (base === cBase) return prodIndex[c];
+    // 2. Buscar pelos 4 primeiros dígitos significativos
+    // (os últimos 4 dígitos são variações irrelevantes)
+    const prefixo = semZeros.substring(0, 4);
+
+    for (let c in prodIndex) {
+        const cSemZeros = c.replace(/^0+/, '') || c;
+        if (cSemZeros.startsWith(prefixo)) {
+            return prodIndex[c];
         }
     }
 
