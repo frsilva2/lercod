@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventário - Importador CSV</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            color: #2F3685;
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        /* Upload Area */
+        .upload-area {
+            border: 3px dashed #ddd;
+            border-radius: 16px;
+            padding: 60px 30px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        .upload-area:hover, .upload-area.dragover {
+            border-color: #EE2B68;
+            background: #fff5f8;
+        }
+        .upload-area input {
+            display: none;
+        }
+        .upload-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        .upload-area h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .upload-area p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        /* Botões */
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn:hover { transform: translateY(-2px); }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background: #EE2B68; color: white; }
+        .btn-success { background: #10b981; color: white; }
+        .btn-secondary { background: #6b7280; color: white; }
+        .btn-outline { background: white; color: #EE2B68; border: 2px solid #EE2B68; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        /* Status */
+        .status-bar {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+        .status-item {
+            background: #f3f4f6;
+            padding: 15px 25px;
+            border-radius: 12px;
+            text-align: center;
+            flex: 1;
+            min-width: 150px;
+        }
+        .status-item .num {
+            font-size: 32px;
+            font-weight: 900;
+            color: #2F3685;
+        }
+        .status-item.warning .num { color: #f59e0b; }
+        .status-item.success .num { color: #10b981; }
+        .status-item .label {
+            font-size: 13px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        /* Tabela */
+        .table-container {
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        th {
+            background: #2F3685;
+            color: white;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+        }
+        tr:hover { background: #f9fafb; }
+        tr.nao-encontrado { background: #fef3c7; }
+        tr.nao-encontrado:hover { background: #fde68a; }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .badge-litoral { background: #fef3c7; color: #92400e; }
+        .badge-euro { background: #dbeafe; color: #1e40af; }
+        .badge-erro { background: #fee2e2; color: #dc2626; }
+
+        /* Checkbox */
+        .checkbox-cell {
+            width: 40px;
+        }
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        /* Ações da tabela */
+        .table-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .selected-count {
+            background: #EE2B68;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            animation: fadeIn 0.2s;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .modal {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 600px;
+            width: 100%;
+            max-height: 80vh;
+            overflow-y: auto;
+            animation: slideUp 0.3s;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .modal h2 {
+            color: #2F3685;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .modal-close {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: none;
+            border: none;
+            font-size: 28px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        /* Busca de produtos */
+        .search-box {
+            position: relative;
+            margin-bottom: 20px;
+        }
+        .search-box input {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: border-color 0.2s;
+        }
+        .search-box input:focus {
+            outline: none;
+            border-color: #EE2B68;
+        }
+
+        .produto-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+        }
+        .produto-item {
+            padding: 15px;
+            border-bottom: 1px solid #e5e7eb;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .produto-item:hover { background: #f3f4f6; }
+        .produto-item:last-child { border-bottom: none; }
+        .produto-item.selected { background: #dbeafe; }
+        .produto-item .codigo {
+            font-weight: 700;
+            color: #2F3685;
+        }
+        .produto-item .nome {
+            font-size: 13px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        /* Info do código não encontrado */
+        .codigo-info {
+            background: #fef3c7;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border-left: 4px solid #f59e0b;
+        }
+        .codigo-info strong {
+            color: #92400e;
+        }
+
+        /* Ações do modal */
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: flex-end;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(16, 185, 129, 0.95);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 16px;
+            font-weight: 600;
+            z-index: 2000;
+            animation: toastIn 0.3s;
+        }
+        .toast.error { background: rgba(239, 68, 68, 0.95); }
+        .toast.warning { background: rgba(245, 158, 11, 0.95); }
+        @keyframes toastIn {
+            from { transform: translateX(-50%) translateY(100px); opacity: 0; }
+            to { transform: translateX(-50%) translateY(0); opacity: 1; }
+        }
+
+        /* Hidden */
+        .hidden { display: none !important; }
+
+        /* Cor input */
+        .cor-pendente {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .cor-pendente input {
+            width: 80px;
+            padding: 5px 10px;
+            border: 2px solid #f59e0b;
+            border-radius: 6px;
+            font-size: 14px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .cor-pendente input:focus {
+            outline: none;
+            border-color: #EE2B68;
+        }
+
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #e5e7eb;
+            border-top-color: #EE2B68;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsivo */
+        @media (max-width: 768px) {
+            .status-bar { flex-direction: column; }
+            .status-item { min-width: auto; }
+            .btn { width: 100%; justify-content: center; }
+            .table-actions { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="card header">
+            <h1>📦 Inventário - Importador CSV</h1>
+            <p>Importe o CSV do leitor de códigos de barras e gere a planilha de inventário</p>
+        </div>
+
+        <!-- Upload -->
+        <div class="card" id="uploadCard">
+            <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                <input type="file" id="fileInput" accept=".csv" onchange="handleFile(this.files[0])">
+                <div class="upload-icon">📄</div>
+                <h3>Arraste o arquivo CSV aqui</h3>
+                <p>ou clique para selecionar</p>
+                <p style="margin-top: 15px; color: #999; font-size: 12px;">
+                    Formato esperado: CSV exportado do GammaPlay ou similar
+                </p>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div class="card hidden" id="loadingCard">
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>Processando arquivo...</p>
+            </div>
+        </div>
+
+        <!-- Resultados -->
+        <div class="card hidden" id="resultCard">
+            <h2 style="color: #2F3685; margin-bottom: 20px;">📊 Resultado do Processamento</h2>
+
+            <div class="status-bar">
+                <div class="status-item success">
+                    <div class="num" id="totalProcessados">0</div>
+                    <div class="label">Total Processados</div>
+                </div>
+                <div class="status-item success">
+                    <div class="num" id="totalEncontrados">0</div>
+                    <div class="label">Produtos Encontrados</div>
+                </div>
+                <div class="status-item warning">
+                    <div class="num" id="totalNaoEncontrados">0</div>
+                    <div class="label">Não Encontrados</div>
+                </div>
+                <div class="status-item">
+                    <div class="num" id="totalMetros">0</div>
+                    <div class="label">Total Metros</div>
+                </div>
+            </div>
+
+            <!-- Ações para não encontrados -->
+            <div class="table-actions" id="acoesMassa">
+                <span class="selected-count" id="selectedCount">0 selecionados</span>
+                <button class="btn btn-outline" onclick="selecionarTodosNaoEncontrados()">
+                    Selecionar todos não encontrados
+                </button>
+                <button class="btn btn-primary" onclick="vincularEmMassa()" id="btnVincularMassa" disabled>
+                    Vincular selecionados
+                </button>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="checkbox-cell"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+                            <th>Fornecedor</th>
+                            <th>Código</th>
+                            <th>Produto ERP</th>
+                            <th>Cor</th>
+                            <th>Qtd (MT)</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap;">
+                <button class="btn btn-success" onclick="exportarPlanilha()">
+                    📥 Exportar Planilha
+                </button>
+                <button class="btn btn-secondary" onclick="exportarDeparaAtualizado()">
+                    💾 Salvar De-Para Atualizado
+                </button>
+                <button class="btn btn-outline" onclick="novaImportacao()">
+                    🔄 Nova Importação
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Vinculação -->
+    <div class="modal-overlay hidden" id="modalVincular">
+        <div class="modal">
+            <h2>🔗 Vincular Código</h2>
+
+            <div class="codigo-info" id="codigoInfo">
+                <strong>Código não encontrado:</strong> <span id="codigoNaoEncontrado"></span>
+                <div id="codigosMultiplos" class="hidden" style="margin-top: 10px;">
+                    <strong>Códigos selecionados:</strong> <span id="listaCodigosMultiplos"></span>
+                </div>
+            </div>
+
+            <div class="search-box">
+                <input type="text" id="buscaProduto" placeholder="Buscar produto por código ou nome..." oninput="filtrarProdutos()">
+            </div>
+
+            <div class="produto-list" id="listaProdutos"></div>
+
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="fecharModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmarVinculacao()" id="btnConfirmarVinculo" disabled>
+                    Vincular
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+// ============================================================================
+// DADOS
+// ============================================================================
+let PRODUTOS_DB = [];
+let prodIndex = {};
+let deparaAdicional = {}; // Novos vínculos criados pelo usuário
+let itensProcessados = [];
+let produtoSelecionado = null;
+let codigosParaVincular = [];
+
+// ============================================================================
+// INICIALIZAÇÃO
+// ============================================================================
+window.onload = async function() {
+    await carregarProdutos();
+    setupDragDrop();
+    carregarDeparaLocal();
+};
+
+async function carregarProdutos() {
+    try {
+        const response = await fetch('depra.json');
+        PRODUTOS_DB = await response.json();
+
+        // Criar índice por codigo_produto
+        PRODUTOS_DB.forEach(p => {
+            const cod = String(p.codigo_produto);
+            prodIndex[cod] = {
+                codigo_produto: cod,
+                produto: p.produto,
+                cod_erp: p.cod_erp,
+                nome_erp: p.nome_erp,
+                fornecedor: p.fornecedor
+            };
+        });
+
+        console.log('✓ ' + PRODUTOS_DB.length + ' produtos carregados');
+    } catch(e) {
+        console.error('Erro ao carregar produtos:', e);
+        mostrarToast('Erro ao carregar base de produtos!', 'error');
+    }
+}
+
+function carregarDeparaLocal() {
+    const saved = localStorage.getItem('depara_adicional');
+    if (saved) {
+        deparaAdicional = JSON.parse(saved);
+        console.log('✓ ' + Object.keys(deparaAdicional).length + ' vínculos adicionais carregados');
+    }
+}
+
+function salvarDeparaLocal() {
+    localStorage.setItem('depara_adicional', JSON.stringify(deparaAdicional));
+}
+
+// ============================================================================
+// DRAG & DROP
+// ============================================================================
+function setupDragDrop() {
+    const area = document.getElementById('uploadArea');
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+        area.addEventListener(evt, e => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    });
+
+    ['dragenter', 'dragover'].forEach(evt => {
+        area.addEventListener(evt, () => area.classList.add('dragover'));
+    });
+
+    ['dragleave', 'drop'].forEach(evt => {
+        area.addEventListener(evt, () => area.classList.remove('dragover'));
+    });
+
+    area.addEventListener('drop', e => {
+        const file = e.dataTransfer.files[0];
+        if (file && file.name.endsWith('.csv')) {
+            handleFile(file);
+        } else {
+            mostrarToast('Por favor, selecione um arquivo CSV', 'error');
+        }
+    });
+}
+
+// ============================================================================
+// PROCESSAMENTO DO CSV
+// ============================================================================
+function handleFile(file) {
+    if (!file) return;
+
+    document.getElementById('uploadCard').classList.add('hidden');
+    document.getElementById('loadingCard').classList.remove('hidden');
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const csv = e.target.result;
+        processarCSV(csv);
+    };
+    reader.readAsText(file);
+}
+
+function processarCSV(csv) {
+    const linhas = csv.split('\n');
+    const header = linhas[0].split(',');
+
+    // Encontrar índice da coluna 'text' (código)
+    const idxText = header.findIndex(h => h.trim().toLowerCase() === 'text');
+    const idxFormat = header.findIndex(h => h.trim().toLowerCase() === 'format');
+
+    if (idxText === -1) {
+        mostrarToast('Coluna "text" não encontrada no CSV', 'error');
+        novaImportacao();
+        return;
+    }
+
+    itensProcessados = [];
+
+    // Processar cada linha (pular header)
+    for (let i = 1; i < linhas.length; i++) {
+        const linha = linhas[i].trim();
+        if (!linha) continue;
+
+        // Parse CSV considerando possíveis vírgulas em campos
+        const campos = parseCSVLine(linha);
+        const codigo = campos[idxText];
+        const formato = campos[idxFormat] || '';
+
+        if (!codigo) continue;
+
+        const item = decodificar(codigo, formato);
+        item.linhaOriginal = i + 1;
+        item.codigoOriginal = codigo;
+        itensProcessados.push(item);
+    }
+
+    document.getElementById('loadingCard').classList.add('hidden');
+    document.getElementById('resultCard').classList.remove('hidden');
+
+    atualizarTabela();
+    atualizarEstatisticas();
+}
+
+function parseCSVLine(linha) {
+    const campos = [];
+    let campo = '';
+    let dentroAspas = false;
+
+    for (let i = 0; i < linha.length; i++) {
+        const char = linha[i];
+
+        if (char === '"') {
+            dentroAspas = !dentroAspas;
+        } else if (char === ',' && !dentroAspas) {
+            campos.push(campo.trim());
+            campo = '';
+        } else {
+            campo += char;
+        }
+    }
+    campos.push(campo.trim());
+
+    return campos;
+}
+
+// ============================================================================
+// DECODIFICAÇÃO DOS CÓDIGOS
+// ============================================================================
+function decodificar(codigo, formato) {
+    const tam = codigo.length;
+    const somenteDigitos = /^\d+$/.test(codigo);
+
+    // =========================================================================
+    // LITORAL (33 dígitos) - QR Code
+    // Formato: 0000020020049000050000024113400010
+    //          |   ||      ||    |
+    //          0   5|      14    19
+    //              12      |18
+    // Código: posição 5-12, Quantidade: posição 14-18
+    // COR: NÃO está no código (preencher manualmente)
+    // =========================================================================
+    if (tam === 33 && somenteDigitos) {
+        const cod = codigo.substring(5, 13);
+        const qtd = parseFloat(codigo.substring(14, 19)) || 0;
+        const prod = buscarProd(cod);
+
+        return {
+            fornecedor: 'LITORAL',
+            codigoExtraido: cod,
+            quantidade: qtd,
+            cor: '', // Cor em branco para LITORAL - preencher manualmente
+            produto: prod,
+            encontrado: !!prod
+        };
+    }
+
+    // =========================================================================
+    // EUROTEXTIL - Formato GS1-128 (45 dígitos, começa com "01")
+    // Formato padrão GS1 com Application Identifiers
+    // Código: posição 11-17, Cor: posição 27-29, Quantidade: posição 37-41
+    // =========================================================================
+    if (tam === 45 && codigo.startsWith('01') && somenteDigitos) {
+        const cod = codigo.substring(11, 18);
+        const cor = codigo.substring(27, 30).replace(/^0+/, '') || '0';
+        const qtd = parseFloat(codigo.substring(37, 42)) || 0;
+        const prod = buscarProd(cod);
+
+        return {
+            fornecedor: 'EUROTEXTIL',
+            codigoExtraido: cod,
+            quantidade: qtd,
+            cor: '#' + cor,
+            produto: prod,
+            encontrado: !!prod
+        };
+    }
+
+    // =========================================================================
+    // EUROTEXTIL - Código de barras 1D (formato da imagem 1)
+    // Formato: 0000000334103.000066000.000SDF901.242494.00939
+    //          |     ||    | |    |   |   |  |
+    //          zeros |código| qtd*100| |cor| PO
+    //                334103  66000    901
+    // Também pode vir como: 0000000334103000066000000SDF90124249400939 (sem pontos)
+    // =========================================================================
+    if (tam >= 40 && codigo.startsWith('0000000')) {
+        // Remover pontos se houver
+        const codLimpo = codigo.replace(/\./g, '');
+
+        // Extrair código do produto (6 dígitos após os zeros iniciais)
+        const cod = codLimpo.substring(7, 13);
+
+        // Procurar quantidade (5 dígitos que representam metros * 100)
+        // Geralmente após o código vem a quantidade
+        const qtdStr = codLimpo.substring(13, 18);
+        const qtd = parseFloat(qtdStr) / 100 || 0;
+
+        // Procurar cor (3 dígitos antes de letras ou após padrão específico)
+        let cor = '0';
+        const matchCor = codigo.match(/[A-Z]+(\d{3})\./);
+        if (matchCor) {
+            cor = matchCor[1].replace(/^0+/, '') || '0';
+        } else {
+            // Tentar extrair da posição fixa
+            const possivelCor = codLimpo.substring(24, 27);
+            if (/^\d{3}$/.test(possivelCor)) {
+                cor = possivelCor.replace(/^0+/, '') || '0';
+            }
+        }
+
+        const prod = buscarProd(cod);
+
+        return {
+            fornecedor: 'EUROTEXTIL',
+            codigoExtraido: cod,
+            quantidade: qtd,
+            cor: '#' + cor,
+            produto: prod,
+            encontrado: !!prod
+        };
+    }
+
+    // =========================================================================
+    // Tentar identificar padrões genéricos
+    // =========================================================================
+
+    // Código muito longo - tentar extrair informações
+    if (tam > 20 && somenteDigitos) {
+        // Procurar sequência de 6 dígitos que possa ser código de produto
+        for (let i = 0; i <= tam - 6; i++) {
+            const possivel = codigo.substring(i, i + 6);
+            if (possivel !== '000000') {
+                const prod = buscarProd(possivel);
+                if (prod) {
+                    // Tentar extrair quantidade (5 dígitos)
+                    let qtd = 0;
+                    for (let j = i + 6; j <= tam - 5; j++) {
+                        const qtdStr = codigo.substring(j, j + 5);
+                        const qtdNum = parseInt(qtdStr);
+                        if (qtdNum > 0 && qtdNum < 99999) {
+                            qtd = qtdNum / 100;
+                            break;
+                        }
+                    }
+
+                    return {
+                        fornecedor: 'DETECTADO',
+                        codigoExtraido: possivel,
+                        quantidade: qtd,
+                        cor: '',
+                        produto: prod,
+                        encontrado: true
+                    };
+                }
+            }
+        }
+    }
+
+    // Formato não reconhecido - tentar extrair algo útil
+    // Procurar sequência de 6-8 dígitos
+    const matchCod = codigo.match(/(\d{6,8})/);
+    if (matchCod) {
+        const cod = matchCod[1];
+        const prod = buscarProd(cod);
+
+        return {
+            fornecedor: 'DESCONHECIDO',
+            codigoExtraido: cod,
+            quantidade: 0,
+            cor: '',
+            produto: prod,
+            encontrado: !!prod
+        };
+    }
+
+    return {
+        fornecedor: 'ERRO',
+        codigoExtraido: codigo,
+        quantidade: 0,
+        cor: '',
+        produto: null,
+        encontrado: false,
+        erro: 'Formato não reconhecido'
+    };
+}
+
+// ============================================================================
+// BUSCA DE PRODUTOS (PREFIXO 4-6 DÍGITOS)
+// ============================================================================
+function buscarProd(cod) {
+    // Limpar código
+    const codLimpo = String(cod).replace(/^0+/, '');
+
+    // 1. Verificar de-para adicional primeiro
+    if (deparaAdicional[cod]) {
+        const codVinculado = deparaAdicional[cod];
+        if (prodIndex[codVinculado]) {
+            return prodIndex[codVinculado];
+        }
+    }
+    if (deparaAdicional[codLimpo]) {
+        const codVinculado = deparaAdicional[codLimpo];
+        if (prodIndex[codVinculado]) {
+            return prodIndex[codVinculado];
+        }
+    }
+
+    // 2. Busca exata
+    if (prodIndex[cod]) return prodIndex[cod];
+    if (prodIndex[codLimpo]) return prodIndex[codLimpo];
+
+    // 3. Busca por prefixo (4-6 primeiros dígitos)
+    // Começar com mais dígitos (mais específico) e ir reduzindo
+    for (let prefixLen = 6; prefixLen >= 4; prefixLen--) {
+        if (codLimpo.length < prefixLen) continue;
+
+        const prefixo = codLimpo.substring(0, prefixLen);
+
+        for (let c in prodIndex) {
+            const cLimpo = c.replace(/^0+/, '');
+            if (cLimpo.startsWith(prefixo)) {
+                return prodIndex[c];
+            }
+        }
+    }
+
+    return null;
+}
+
+// ============================================================================
+// INTERFACE - TABELA
+// ============================================================================
+function atualizarTabela() {
+    const tbody = document.getElementById('tableBody');
+    tbody.innerHTML = '';
+
+    itensProcessados.forEach((item, idx) => {
+        const tr = document.createElement('tr');
+        if (!item.encontrado) {
+            tr.classList.add('nao-encontrado');
+        }
+
+        const badgeClass = item.fornecedor === 'LITORAL' ? 'badge-litoral' :
+                          item.fornecedor === 'EUROTEXTIL' ? 'badge-euro' : 'badge-erro';
+
+        const nomeErp = item.produto ? item.produto.nome_erp : '-';
+
+        // Campo de cor: editável se LITORAL, fixo se EURO
+        let corHtml;
+        if (item.fornecedor === 'LITORAL') {
+            corHtml = `<span class="cor-pendente">
+                <input type="text" value="${item.cor}"
+                       onchange="atualizarCor(${idx}, this.value)"
+                       placeholder="Digite">
+            </span>`;
+        } else {
+            corHtml = item.cor || '-';
+        }
+
+        const statusHtml = item.encontrado ?
+            '<span style="color: #10b981;">✓ OK</span>' :
+            '<span style="color: #f59e0b;">⚠ Não encontrado</span>';
+
+        const acoesHtml = item.encontrado ? '-' :
+            `<button class="btn btn-outline" style="padding: 6px 12px; font-size: 12px;"
+                     onclick="abrirVinculacao(${idx})">Vincular</button>`;
+
+        tr.innerHTML = `
+            <td class="checkbox-cell">
+                <input type="checkbox" data-idx="${idx}" onchange="atualizarSelecao()"
+                       ${item.encontrado ? 'disabled' : ''}>
+            </td>
+            <td><span class="badge ${badgeClass}">${item.fornecedor}</span></td>
+            <td>${item.codigoExtraido}</td>
+            <td>${nomeErp}</td>
+            <td>${corHtml}</td>
+            <td style="text-align: right; font-weight: 600;">${item.quantidade.toFixed(2)}</td>
+            <td>${statusHtml}</td>
+            <td>${acoesHtml}</td>
+        `;
+
+        tbody.appendChild(tr);
+    });
+}
+
+function atualizarCor(idx, valor) {
+    itensProcessados[idx].cor = valor.toUpperCase();
+}
+
+function atualizarEstatisticas() {
+    const total = itensProcessados.length;
+    const encontrados = itensProcessados.filter(i => i.encontrado).length;
+    const naoEncontrados = total - encontrados;
+    const metros = itensProcessados.reduce((sum, i) => sum + i.quantidade, 0);
+
+    document.getElementById('totalProcessados').textContent = total;
+    document.getElementById('totalEncontrados').textContent = encontrados;
+    document.getElementById('totalNaoEncontrados').textContent = naoEncontrados;
+    document.getElementById('totalMetros').textContent = metros.toFixed(2);
+
+    // Mostrar/ocultar ações em massa
+    document.getElementById('acoesMassa').classList.toggle('hidden', naoEncontrados === 0);
+}
+
+// ============================================================================
+// SELEÇÃO
+// ============================================================================
+function toggleSelectAll() {
+    const selectAll = document.getElementById('selectAll').checked;
+    document.querySelectorAll('#tableBody input[type="checkbox"]:not(:disabled)').forEach(cb => {
+        cb.checked = selectAll;
+    });
+    atualizarSelecao();
+}
+
+function atualizarSelecao() {
+    const selecionados = document.querySelectorAll('#tableBody input[type="checkbox"]:checked');
+    document.getElementById('selectedCount').textContent = selecionados.length + ' selecionados';
+    document.getElementById('btnVincularMassa').disabled = selecionados.length === 0;
+}
+
+function selecionarTodosNaoEncontrados() {
+    document.querySelectorAll('#tableBody input[type="checkbox"]:not(:disabled)').forEach(cb => {
+        cb.checked = true;
+    });
+    document.getElementById('selectAll').checked = true;
+    atualizarSelecao();
+}
+
+// ============================================================================
+// VINCULAÇÃO
+// ============================================================================
+function abrirVinculacao(idx) {
+    codigosParaVincular = [idx];
+    const item = itensProcessados[idx];
+
+    document.getElementById('codigoNaoEncontrado').textContent = item.codigoExtraido;
+    document.getElementById('codigosMultiplos').classList.add('hidden');
+
+    renderizarListaProdutos();
+    document.getElementById('modalVincular').classList.remove('hidden');
+    document.getElementById('buscaProduto').value = '';
+    document.getElementById('buscaProduto').focus();
+}
+
+function vincularEmMassa() {
+    const checkboxes = document.querySelectorAll('#tableBody input[type="checkbox"]:checked');
+    codigosParaVincular = Array.from(checkboxes).map(cb => parseInt(cb.dataset.idx));
+
+    if (codigosParaVincular.length === 0) {
+        mostrarToast('Selecione pelo menos um item', 'warning');
+        return;
+    }
+
+    const codigos = codigosParaVincular.map(idx => itensProcessados[idx].codigoExtraido);
+
+    document.getElementById('codigoNaoEncontrado').textContent = codigos[0];
+    if (codigos.length > 1) {
+        document.getElementById('codigosMultiplos').classList.remove('hidden');
+        document.getElementById('listaCodigosMultiplos').textContent = codigos.join(', ');
+    } else {
+        document.getElementById('codigosMultiplos').classList.add('hidden');
+    }
+
+    renderizarListaProdutos();
+    document.getElementById('modalVincular').classList.remove('hidden');
+    document.getElementById('buscaProduto').value = '';
+    document.getElementById('buscaProduto').focus();
+}
+
+function renderizarListaProdutos(filtro = '') {
+    const lista = document.getElementById('listaProdutos');
+    lista.innerHTML = '';
+
+    const filtroLower = filtro.toLowerCase();
+    let count = 0;
+
+    for (let cod in prodIndex) {
+        if (count >= 100) break; // Limitar para performance
+
+        const prod = prodIndex[cod];
+        const matchCod = cod.toLowerCase().includes(filtroLower);
+        const matchNome = prod.nome_erp.toLowerCase().includes(filtroLower);
+        const matchProd = prod.produto.toLowerCase().includes(filtroLower);
+
+        if (filtro && !matchCod && !matchNome && !matchProd) continue;
+
+        const div = document.createElement('div');
+        div.className = 'produto-item';
+        div.dataset.codigo = cod;
+        div.innerHTML = `
+            <div class="codigo">${cod}</div>
+            <div class="nome">${prod.nome_erp} - ${prod.produto}</div>
+        `;
+        div.onclick = () => selecionarProduto(div, cod);
+
+        lista.appendChild(div);
+        count++;
+    }
+
+    if (count === 0) {
+        lista.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">Nenhum produto encontrado</div>';
+    }
+}
+
+function filtrarProdutos() {
+    const filtro = document.getElementById('buscaProduto').value;
+    renderizarListaProdutos(filtro);
+}
+
+function selecionarProduto(elemento, codigo) {
+    document.querySelectorAll('.produto-item').forEach(el => el.classList.remove('selected'));
+    elemento.classList.add('selected');
+    produtoSelecionado = codigo;
+    document.getElementById('btnConfirmarVinculo').disabled = false;
+}
+
+function confirmarVinculacao() {
+    if (!produtoSelecionado || codigosParaVincular.length === 0) return;
+
+    const prod = prodIndex[produtoSelecionado];
+
+    // Vincular todos os códigos selecionados
+    codigosParaVincular.forEach(idx => {
+        const item = itensProcessados[idx];
+        const codLimpo = item.codigoExtraido.replace(/^0+/, '');
+
+        // Salvar no de-para adicional
+        deparaAdicional[codLimpo] = produtoSelecionado;
+
+        // Atualizar item processado
+        item.produto = prod;
+        item.encontrado = true;
+    });
+
+    salvarDeparaLocal();
+    fecharModal();
+    atualizarTabela();
+    atualizarEstatisticas();
+
+    mostrarToast(`${codigosParaVincular.length} código(s) vinculado(s) com sucesso!`);
+
+    // Limpar seleção
+    document.querySelectorAll('#tableBody input[type="checkbox"]').forEach(cb => cb.checked = false);
+    document.getElementById('selectAll').checked = false;
+    atualizarSelecao();
+}
+
+function fecharModal() {
+    document.getElementById('modalVincular').classList.add('hidden');
+    produtoSelecionado = null;
+    codigosParaVincular = [];
+    document.getElementById('btnConfirmarVinculo').disabled = true;
+}
+
+// ============================================================================
+// EXPORTAÇÃO
+// ============================================================================
+function exportarPlanilha() {
+    // Verificar se há itens não encontrados
+    const naoEncontrados = itensProcessados.filter(i => !i.encontrado);
+    if (naoEncontrados.length > 0) {
+        if (!confirm(`Existem ${naoEncontrados.length} itens não encontrados. Deseja exportar mesmo assim?`)) {
+            return;
+        }
+    }
+
+    // Verificar cores em branco para LITORAL
+    const litoralSemCor = itensProcessados.filter(i => i.fornecedor === 'LITORAL' && !i.cor);
+    if (litoralSemCor.length > 0) {
+        mostrarToast(`${litoralSemCor.length} itens LITORAL sem cor preenchida`, 'warning');
+    }
+
+    // Gerar CSV
+    let csv = 'Codigo,Nome_ERP,Produto,Cor,Quantidade_MT,Fornecedor,Status\n';
+
+    itensProcessados.forEach(item => {
+        const nomeErp = item.produto ? item.produto.nome_erp : 'NAO ENCONTRADO';
+        const produto = item.produto ? item.produto.produto : '';
+        const status = item.encontrado ? 'OK' : 'NAO ENCONTRADO';
+
+        csv += `${item.codigoExtraido},"${nomeErp}","${produto}",${item.cor},${item.quantidade.toFixed(2)},${item.fornecedor},${status}\n`;
+    });
+
+    downloadCSV(csv, `inventario_${new Date().toISOString().split('T')[0]}.csv`);
+    mostrarToast('Planilha exportada com sucesso!');
+}
+
+function exportarDeparaAtualizado() {
+    // Criar novo array com produtos originais + vínculos adicionais
+    const novosVinculos = [];
+
+    for (let codNovo in deparaAdicional) {
+        const codExistente = deparaAdicional[codNovo];
+        const prodExistente = prodIndex[codExistente];
+
+        if (prodExistente) {
+            novosVinculos.push({
+                fornecedor: prodExistente.fornecedor,
+                codigo_produto: parseInt(codNovo) || codNovo,
+                produto: prodExistente.produto,
+                cod_erp: prodExistente.cod_erp,
+                nome_erp: prodExistente.nome_erp,
+                unidade: "MT"
+            });
+        }
+    }
+
+    if (novosVinculos.length === 0) {
+        mostrarToast('Nenhum vínculo novo para exportar', 'warning');
+        return;
+    }
+
+    // Combinar com dados existentes
+    const dadosAtualizados = [...PRODUTOS_DB, ...novosVinculos];
+
+    const blob = new Blob([JSON.stringify(dadosAtualizados, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'depra_atualizado.json';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    mostrarToast(`De-Para exportado com ${novosVinculos.length} novos vínculos!`);
+}
+
+function downloadCSV(content, filename) {
+    const BOM = '\uFEFF'; // Para Excel reconhecer UTF-8
+    const blob = new Blob([BOM + content], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function novaImportacao() {
+    itensProcessados = [];
+    document.getElementById('resultCard').classList.add('hidden');
+    document.getElementById('loadingCard').classList.add('hidden');
+    document.getElementById('uploadCard').classList.remove('hidden');
+    document.getElementById('fileInput').value = '';
+}
+
+// ============================================================================
+// UTILITÁRIOS
+// ============================================================================
+function mostrarToast(msg, tipo = 'success') {
+    const toast = document.createElement('div');
+    toast.className = 'toast ' + tipo;
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.animation = 'toastIn 0.3s reverse';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+    </script>
+</body>
+</html>
